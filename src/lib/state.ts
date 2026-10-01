@@ -1,8 +1,14 @@
 import type { AppState, Conversation, Settings } from '../types';
+import {
+  HANDOFF_PREFERRED_MODEL,
+  TRUSTED_GATEWAY_URL,
+  normalizeGatewayUrl,
+  type HandoffConnection,
+} from './handoff';
 export const DEFAULT_SETTINGS: Settings = {
-  baseUrl: 'https://codex.water555.com/v1',
+  baseUrl: TRUSTED_GATEWAY_URL.replace(/\/+$/, '') + '/v1',
   apiKey: '',
-  model: 'gpt-5.4',
+  model: HANDOFF_PREFERRED_MODEL,
   protocol: 'responses',
   reasoning: '',
   rememberKey: false,
@@ -31,6 +37,55 @@ export function initialState(): AppState {
     settings: { ...DEFAULT_SETTINGS },
   };
 }
+
+/** Drop malformed optional metadata from older or externally supplied workspaces. */
+export function restoreSettings(value: Partial<Settings> | null | undefined): Settings {
+  const settings = { ...DEFAULT_SETTINGS, ...value };
+  if (!['responses', 'chat'].includes(settings.protocol)) settings.protocol = 'responses';
+  const source = settings.connectionSource;
+  delete settings.connectionSource;
+  if (
+    source &&
+    typeof source.gatewayUrl === 'string' &&
+    typeof source.apiKeyId === 'string' &&
+    source.apiKeyId.length > 0 &&
+    source.apiKeyId.length <= 256 &&
+    !/[\s\x00-\x1f]/.test(source.apiKeyId)
+  ) {
+    try {
+      settings.connectionSource = {
+        gatewayUrl: normalizeGatewayUrl(source.gatewayUrl),
+        apiKeyId: source.apiKeyId,
+      };
+    } catch {
+      // Optional metadata cannot make an otherwise compatible backup unusable.
+    }
+  }
+  return settings;
+}
+
+/** Apply only after a successful model check and any required user confirmation. */
+export function applyHandoff(
+  state: AppState,
+  connection: HandoffConnection,
+  model: string,
+): AppState {
+  const conversation = newConversation();
+  return {
+    ...state,
+    conversations: [conversation, ...state.conversations],
+    activeConversationId: conversation.id,
+    settings: {
+      ...state.settings,
+      baseUrl: connection.baseUrl,
+      apiKey: connection.apiKey,
+      protocol: connection.protocol,
+      model,
+      rememberKey: connection.rememberKey,
+      connectionSource: { gatewayUrl: connection.gatewayUrl, apiKeyId: connection.apiKeyId },
+    },
+  };
+}
 let dbPromise: Promise<IDBDatabase> | undefined;
 function database() {
   return (dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
@@ -47,7 +102,10 @@ export async function loadState(): Promise<AppState | null> {
   const db = await database();
   return new Promise((resolve, reject) => {
     const r = db.transaction('state').objectStore('state').get('workspace');
-    r.onsuccess = () => resolve(r.result ?? null);
+    r.onsuccess = () => {
+      const state = r.result as AppState | undefined;
+      resolve(state ? { ...state, settings: restoreSettings(state.settings) } : null);
+    };
     r.onerror = () => reject(r.error);
   });
 }
@@ -139,8 +197,7 @@ export function parseBackup(json: string): AppState {
         throw new Error('备份消息格式无效。');
   }
   // API history is compatible only with the selected protocol stored in the backup.
-  x.settings = { ...DEFAULT_SETTINGS, ...x.settings, apiKey: '', rememberKey: false };
-  if (!['responses', 'chat'].includes(x.settings.protocol)) x.settings.protocol = 'responses';
+  x.settings = { ...restoreSettings(x.settings), apiKey: '', rememberKey: false };
   x.changes = Array.isArray(x.changes) ? x.changes.slice(-100) : [];
   if (!x.conversations.some((c) => c.id === x.activeConversationId))
     x.activeConversationId = x.conversations[0].id;

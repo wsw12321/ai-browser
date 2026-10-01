@@ -13,6 +13,10 @@ npm run dev
 
 打开终端显示的网址，点击顶部模型名称，填写 API URL、API Key 和你的服务提供的模型 ID。可点击刷新按钮获取 `/models` 列表，也可自由输入模型名称。模型默认值只是可编辑的示例，不保证你的服务或账户支持该模型。
 
+也可以从 [网关](https://codex.water555.com) 的「概览」或「使用指导」点击「一键使用」，选择或创建密钥后进入 [网页工作台](https://ai.water555.com)。工作台检查可用模型后自动完成配置，首选 `gpt-6.1-sol`；无权限时按 ID 顺序选择其他可见 GPT 模型，再选择网关支持的 Gemini 模型。Gemini 当前仅支持文本。接入检查只读取模型列表，不自动发送推理请求。
+
+已有不同连接时先确认切换；确认后进入新对话，文件和历史对话保留。取消或检查失败均保留原配置。模型检查失败可直接重试；连接码失效或兑换失败则返回网关重新接入。默认不记住密钥，刷新后需要重新接入；勾选记住后才会保存在本机浏览器中，备份始终剔除密钥。
+
 1. 导入附件、图片、文件夹或 ZIP。导入后的文件自动附加到下一条消息。
 2. 用自然语言说明任务。模型可以列出、读取、搜索、创建、替换、删除文件，以及应用 Codex 风格的补丁。
 3. 默认在改动预览中确认后才会应用。可在改动记录中撤销最近的文件操作。
@@ -39,6 +43,14 @@ npm run deploy:pages
 ```
 
 首次部署可在提示中创建 Pages 项目。单独的 Pages 配置是 `wrangler.pages.jsonc`。
+
+### 网关一键接入配置
+
+`VITE_GATEWAY_URL` 是构建时的可信网关 Origin，默认 `https://codex.water555.com`，可参考 `.env.example`。只允许从此地址兑换连接码，兑换结果中的 API 地址也必须属于此网关的 `/v1`。连接码通过 URL 片段传递，页面启动时立即清除，仅兑换一次；请求不携带 Cookie，不跟随重定向。协议为 `#handoff_version=1&code=…`，有效期 120 秒。
+
+上线顺序：先发布支持接入的工作台，再在网关设置 `GATEWAY_BROWSER_CLIENT_URL=https://ai.water555.com` 并重启。网关未设置该配置时入口显示未启用。网关 Go 服务按目标网站 Origin 精确处理 `/browser-handoffs/exchange`、`/v1/models`、`/v1/responses` 的 CORS，管理和登录接口仍使用原访问规则。如果线上 Caddy 已添加这些路由的 CORS 响应头，应同时移除，避免重复响应头导致浏览器拒绝响应。
+
+工作台必须先恢复 IndexedDB 工作区再合并连接设置。可选的 `connectionSource`（网关 Origin、Key ID）只用于识别原连接，兼容旧工作区和备份，不含密钥。连接码只用于当前页面的内存状态，网关重启后未兑换的码失效。
 
 ### Workers Static Assets
 
@@ -92,6 +104,16 @@ npx wrangler deploy --dry-run --outdir /tmp/localdesk-worker-check
 单元测试验证无服务端状态的 Responses 工具续传、流式 UTF-8 边界、图片输入、Chat Completions 兼容、路径限制、补丁原子性、密钥持久化和 QuickJS 隔离/超时。浏览器测试在桌面和手机尺寸中实际运行构建产物，使用受控 API 响应验证本地导入→读取→审批→修改→下载→刷新恢复、图片、DOCX、沙盒、拒绝命令、撤销与安全预览。
 
 浏览器测试不使用真实付费密钥。实际模型可用性、CORS、费用、工具调用能力由用户选择的服务决定。验收时填入自己的连接并发起任务即可验证真实服务。
+
+一键接入另有两个真实本地 Origin 的回归测试。先在相邻网关仓库运行以下测试夹具（使用真实签发、兑换、解密及 CORS 处理器；账户查询和模型列表使用测试数据）：
+
+```bash
+GATEWAY_BROWSER_FIXTURE_LISTEN=127.0.0.1:4180 \
+GATEWAY_BROWSER_FIXTURE_ORIGIN=http://127.0.0.1:4174 \
+go test -v -run '^TestBrowserHandoffBrowserFixture$' -timeout 20m ./internal/server
+```
+
+然后在本仓库执行 `E2E_GATEWAY_FIXTURE=1 npx playwright test --config playwright.handoff.config.ts`。该配置自动启动端口 4174 的工作台开发服务，启用 React StrictMode 并将可信网关设为本地夹具。验证桌面和手机的跨域预检、单次兑换、错误响应、模型重试、降级提示和刷新持久化。结束后执行 `curl -X POST http://127.0.0.1:4180/test/stop` 关闭夹具。普通浏览器套件跳过这组需独立服务的测试。
 
 实现遵循 [OpenAI 官方工具调用文档](https://developers.openai.com/api/docs/guides/function-calling) 和 [流式 Responses 文档](https://developers.openai.com/api/docs/guides/streaming-responses)。静态托管遵循 [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)。本项目为独立实现，未复制 Codex 源码或冒充 OpenAI 官方产品。
 

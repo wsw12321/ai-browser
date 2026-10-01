@@ -48,6 +48,11 @@ export interface Settings {
   protocol: 'responses' | 'chat';
   reasoning: '' | 'low' | 'medium' | 'high';
   rememberKey: boolean;
+  /** Identifies a gateway connection without retaining its secret. */
+  connectionSource?: {
+    gatewayUrl: string;
+    apiKeyId: string;
+  };
   autoApprove: boolean;
   systemPrompt: string;
   maxRounds: number;

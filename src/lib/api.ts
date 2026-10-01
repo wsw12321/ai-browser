@@ -53,6 +53,7 @@ async function request(
       body: JSON.stringify(body),
       signal: controller.signal,
       credentials: 'omit',
+      redirect: 'error',
       referrerPolicy: 'no-referrer',
     });
     if (!r.ok) {
@@ -308,6 +309,7 @@ export async function fetchModels(settings: Settings, signal?: AbortSignal): Pro
     headers: { Authorization: `Bearer ${settings.apiKey.trim()}` },
     signal: signal ?? AbortSignal.timeout(20000),
     credentials: 'omit',
+    redirect: 'error',
     referrerPolicy: 'no-referrer',
   });
   if (!r.ok) throw new Error(`获取模型失败（${r.status}），可手动填写模型名称。`);

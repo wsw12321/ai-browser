@@ -33,6 +33,7 @@ import type {
 } from './types';
 import {
   backupState,
+  applyHandoff,
   DEFAULT_SETTINGS,
   initialState,
   loadState,
@@ -48,6 +49,8 @@ import SettingsDialog from './components/SettingsDialog';
 import FilePanel, { fileIcon } from './components/FilePanel';
 import ChatMessages from './components/ChatMessages';
 import Modal from './components/Modal';
+import HandoffDialog from './components/HandoffDialog';
+import type { BrowserHandoff, HandoffConnection, HandoffModel } from './lib/handoff';
 interface PendingApproval {
   call: ToolCall;
   changes: FileChange[];
@@ -81,10 +84,11 @@ const suggestions = [
     prompt: '请先列出工作区文件，阅读相关内容，再帮助我修改。修改前简洁说明你的建议。',
   },
 ];
-export default function App() {
+export default function App({ startupHandoff = null }: { startupHandoff?: BrowserHandoff | null }) {
   const [state, setState] = useState<AppState>(initialState);
   const stateRef = useRef(state);
   const [ready, setReady] = useState(false);
+  const [handoffActive, setHandoffActive] = useState(Boolean(startupHandoff));
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -107,12 +111,37 @@ export default function App() {
   const backupRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const persistenceError = useRef(false);
+  const focusAfterHandoff = useRef(false);
   const update = useCallback((fn: (s: AppState) => AppState) => {
     const next = fn(stateRef.current);
     stateRef.current = next;
     setState(next);
   }, []);
   const notify = useCallback((message: string) => setToast(message), []);
+  const closeHandoff = useCallback(() => setHandoffActive(false), []);
+  const connectHandoff = useCallback(
+    (connection: HandoffConnection, model: HandoffModel) => {
+      update((current) => applyHandoff(current, connection, model.model));
+      setHandoffActive(false);
+      setAttached([]);
+      setInput('');
+      setMobileTab('chat');
+      setSidebarOpen(false);
+      focusAfterHandoff.current = true;
+      notify(
+        `已连接，可以开始对话${model.fallback ? `。当前模型：${model.model}` : ''}${model.isGemini ? '（Gemini 当前仅支持文本）' : ''}`,
+      );
+    },
+    [notify, update],
+  );
+  useEffect(() => {
+    if (handoffActive || !focusAfterHandoff.current) return;
+    const frame = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      focusAfterHandoff.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [handoffActive]);
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(''), 6500);
@@ -172,7 +201,7 @@ export default function App() {
   );
   const conversation =
     state.conversations.find((c) => c.id === state.activeConversationId) ?? state.conversations[0];
-  const locked = busy || importing || !ready;
+  const locked = busy || importing || !ready || handoffActive;
   function mutateConversation(id: string, fn: (c: Conversation) => Conversation) {
     update((s) => ({ ...s, conversations: s.conversations.map((c) => (c.id === id ? fn(c) : c)) }));
   }
@@ -563,7 +592,18 @@ export default function App() {
     notify(`已撤销 ${c.path} 的改动。`);
   }
   function saveSettings(settings: Settings) {
-    update((s) => ({ ...s, settings }));
+    update((s) => ({
+      ...s,
+      settings: {
+        ...settings,
+        connectionSource:
+          settings.baseUrl !== s.settings.baseUrl ||
+          settings.apiKey !== s.settings.apiKey ||
+          settings.protocol !== s.settings.protocol
+            ? undefined
+            : settings.connectionSource,
+      },
+    }));
     setSettingsOpen(false);
     notify('模型连接设置已保存。');
   }
@@ -580,12 +620,12 @@ export default function App() {
       if (file.size > 150 * 1024 * 1024) throw new Error('备份最大为 150 MB。');
       const restored = parseBackup(await file.text());
       if (!window.confirm('恢复备份将替换当前文件与对话。建议先导出当前工作区。是否继续？')) return;
-      restored.settings.apiKey = stateRef.current.settings.apiKey;
-      restored.settings.rememberKey = stateRef.current.settings.rememberKey;
+      // A backup can name a different endpoint or Key ID. Never attach the
+      // current secret to that imported connection.
       update(() => restored);
       setAttached([]);
       setSelected(null);
-      notify('工作区已从备份恢复。');
+      notify('工作区已从备份恢复，请重新连接模型。');
     } catch (e) {
       notify(readableError(e));
     } finally {
@@ -722,7 +762,7 @@ export default function App() {
               setSettingsOpen(true);
               setSidebarOpen(false);
             }}
-            disabled={busy}
+            disabled={locked}
           >
             <Settings2 size={18} />
             <span>模型与连接</span>
@@ -750,7 +790,7 @@ export default function App() {
             </span>
           </div>
           <div className="topbar-right">
-            <button className="model-pill" onClick={() => setSettingsOpen(true)} disabled={busy}>
+            <button className="model-pill" onClick={() => setSettingsOpen(true)} disabled={locked}>
               <Zap size={14} />
               <span>{state.settings.model}</span>
               <ChevronDown size={13} />
@@ -935,7 +975,9 @@ export default function App() {
                 </div>
               </div>
               <p className="composer-footnote">
-                AI 可能出错，请检查重要结果。文件操作与计算在本机执行；必要内容发送至所选模型。
+                {state.settings.model.startsWith('gemini-')
+                  ? 'Gemini 当前仅支持文本。文件操作与计算在本机执行；必要内容发送至所选模型。'
+                  : 'AI 可能出错，请检查重要结果。文件操作与计算在本机执行；必要内容发送至所选模型。'}
               </p>
             </div>
           </main>
@@ -958,13 +1000,21 @@ export default function App() {
             <FolderOpen size={19} />
             文件{state.files.length > 0 && <span>{state.files.length}</span>}
           </button>
-          <button onClick={() => setSettingsOpen(true)} disabled={busy}>
+          <button onClick={() => setSettingsOpen(true)} disabled={locked}>
             <Settings2 size={19} />
             模型
           </button>
         </nav>
       </div>
-      {settingsOpen && (
+      {ready && handoffActive && startupHandoff && (
+        <HandoffDialog
+          handoff={startupHandoff}
+          settings={state.settings}
+          onConnected={connectHandoff}
+          onClose={closeHandoff}
+        />
+      )}
+      {settingsOpen && !handoffActive && (
         <SettingsDialog
           settings={state.settings}
           onSave={saveSettings}

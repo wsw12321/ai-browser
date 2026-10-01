@@ -4,7 +4,7 @@ const url = 'https://models.example.test/v1';
 async function setup(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('button', { name: '发送消息' })).toBeDisabled();
-  await page.getByRole('button', { name: 'gpt-5.4', exact: true }).click();
+  await page.getByRole('button', { name: 'gpt-6.1-sol', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '连接你的 AI' });
   await dialog.getByLabel('API URL').fill(url);
   await dialog.getByLabel('API Key', { exact: true }).fill('test-private-key');
@@ -104,7 +104,7 @@ test('local import → model reads → approved write → persistence and export
   await page.reload();
   await filesTab(page);
   await expect(page.getByRole('button', { name: /总结.md.*B/ })).toBeVisible();
-  await page.getByRole('button', { name: 'gpt-5.4', exact: true }).click();
+  await page.getByRole('button', { name: 'gpt-6.1-sol', exact: true }).click();
   await expect(page.getByRole('dialog').getByLabel('API Key', { exact: true })).toHaveValue('');
 });
 test('rejected modifications leave files untouched', async ({ page }) => {
@@ -344,7 +344,7 @@ test('fetches provider models and restores a key-free workspace backup', async (
       body: JSON.stringify({ data: [{ id: 'my-top-model' }, { id: 'my-fast-model' }] }),
     }),
   );
-  await page.getByRole('button', { name: 'gpt-5.4', exact: true }).click();
+  await page.getByRole('button', { name: 'gpt-6.1-sol', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '连接你的 AI' });
   await dialog.getByRole('button', { name: '获取模型列表' }).click();
   await expect(dialog.getByText('已获取 2 个模型。')).toBeVisible();
@@ -394,6 +394,9 @@ test('fetches provider models and restores a key-free workspace backup', async (
     buffer: Buffer.from(JSON.stringify(backup)),
   });
   await expect(page.getByRole('status')).toContainText('工作区已从备份恢复');
+  await page.getByRole('button', { name: 'my-top-model', exact: true }).click();
+  await expect(page.getByRole('dialog').getByLabel('API Key', { exact: true })).toHaveValue('');
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await filesTab(page);
   await page.getByRole('button', { name: /restored.md.*B/ }).click();
   await expect(page.getByRole('textbox', { name: '文件内容' })).toHaveValue('# restored workspace');
