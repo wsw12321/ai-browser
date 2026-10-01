@@ -1,6 +1,6 @@
 import type { AppState, Conversation, Settings } from '../types';
 export const DEFAULT_SETTINGS: Settings = {
-  baseUrl: 'https://api.openai.com/v1',
+  baseUrl: 'https://codex.water555.com/v1',
   apiKey: '',
   model: 'gpt-5.4',
   protocol: 'responses',

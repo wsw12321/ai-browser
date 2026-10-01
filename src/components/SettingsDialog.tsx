@@ -54,7 +54,7 @@ export default function SettingsDialog({
           <input
             value={draft.baseUrl}
             onChange={(e) => patch({ baseUrl: e.target.value })}
-            placeholder="https://api.openai.com/v1"
+            placeholder="https://codex.water555.com/v1"
             autoCapitalize="none"
             spellCheck={false}
           />

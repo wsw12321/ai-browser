@@ -5,7 +5,7 @@ export function endpoint(base: string, route: 'responses' | 'chat/completions' |
   try {
     url = new URL(base.trim());
   } catch {
-    throw new Error('请填写完整的 API URL，例如 https://api.openai.com/v1。');
+    throw new Error('请填写完整的 API URL，例如 https://codex.water555.com/v1。');
   }
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash)
     throw new Error('API URL 必须是 HTTP 或 HTTPS 地址，不能包含账号密码或片段。');

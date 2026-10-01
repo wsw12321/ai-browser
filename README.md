@@ -53,7 +53,7 @@ npm run deploy
 
 默认使用与 Codex 相同的 **Responses API**，发送 `stream: true`、`store: false`，本地保存完整请求历史（包含工具调用结果与加密的 reasoning 内容），不使用 `previous_response_id` 或服务端文件上传。图片作为 `input_image` data URL 传入。支持 OpenAI 或实现相同协议的网关；另提供 Chat Completions 兼容模式。Chat Completions 的工具支持取决于所选模型和服务。思考力度默认不发送；仅在服务支持时选择。
 
-API URL 可以是基础地址（如 `https://api.openai.com/v1`）或完整 `/responses`、`/chat/completions` 地址。模型由服务实际支持的 ID 决定；不内置账户认证或 ChatGPT 订阅登录。
+API URL 可以是基础地址（如 `https://codex.water555.com/v1`）或完整 `/responses`、`/chat/completions` 地址。模型由服务实际支持的 ID 决定；不内置账户认证或 ChatGPT 订阅登录。
 
 服务必须允许来自网页域名的 **CORS** 请求：允许 `POST`、`GET`、`OPTIONS`，允许 `Authorization`、`Content-Type` 请求头，并返回匹配网页 Origin 的 `Access-Control-Allow-Origin`。网站无法绕过浏览器 CORS，也不会借 Cloudflare 转发用户文件或密钥。如果服务不允许跨域，需要服务提供商修改 CORS，或改用允许浏览器访问的 API 服务。HTTPS 网站连接普通 HTTP 远程地址会被浏览器拦截。
 
